@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Sprawl Tax</title>
+    <script type="text/javascript" src="/lib/d3.v5.min.js"></script>
+    <script type="text/javascript" src="/lib/d3-tip.min.js"></script>
+    <script type="text/javascript" src="/lib/d3-dsv.min.js"></script>
+    <script type="text/javascript" src="/lib/d3-legend.min.js"></script>
+    <script type="text/javascript" src="/lib/topojson.v2.min.js"></script>
+    <script
+      type="text/javascript"
+      src="../lib/d3-geo-projection.v2.min.js"
+    ></script>
+
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <h1 class="title">The Sprawl Tax</h1>
+    <div class="horizontalContainer">
+      <div class="verticalContainer">
+        <p>
+          Housing in the U.S. is facing a deepening crisis. While cities once
+          expanded rapidly, the rate of new housing development has slowed
+          significantly since the mid-20th century. In major metropolitan areas
+          like Los Angeles, Detroit, and Miami, the percentage increase in
+          housing units per decade has steadily declined, limiting supply and
+          driving up costs.
+        </p>
+        <img src="images/brookings_housing_growth.png" />
+      </div>
+      <div class="verticalContainer">
+        <p>
+          At the same time, the nature of housing has changed. New homes are
+          getting bigger, yet households are shrinking. The space per person has
+          increased dramatically since the 1970s, reflecting a market that
+          prioritizes larger, single-family homes over higher-density modes
+          which are cheaper per unit to build and supply with infrastructure.
+          This mismatch has contributed to rising costs and an affordability
+          crisis.
+        </p>
+        <img src="images/nyt_home_size.png" />
+      </div>
+    </div>
+    <div class="horizontalContainer">
+      <div class="verticalContainer">
+        <p>
+          Perhaps most alarming is the state of home affordability. According to
+          the Federal Reserve Bank of Atlanta, affordability has plummeted to
+          levels worse than during the 2008 financial crisis. Median incomes are
+          no longer sufficient to cover the cost of homeownership, pushing more
+          people into unstable housing situations.
+        </p>
+        <p>
+          Mixed-use housing zoning offers a potential solution. By integrating
+          residential, commercial, and recreational spaces into the same
+          developments, cities can increase housing availability, reduce
+          commuting distances, and create more vibrant, sustainable communities.
+          This website explores how mixed-use housing can help address the
+          housing crisis and reshape urban living for the better.
+        </p>
+      </div>
+      <div class="verticalContainer">
+        <img src="images/resiclub_affordability.png" />
+        <img src="images/jchs_price_income.png" />
+      </div>
+    </div>
+    <div>
+      <h2 style="padding: 10px; text-align: center">
+        What would atlanta look like if it was designed like the cities below?
+        Select a city from the dropdown to find out.
+      </h2>
+      <div class="horizontalContainer">
+        <div class="image-card">
+          <p class="label">San Jose</p>
+          <img src="images/sanjose.jpg" />
+        </div>
+        <div class="image-card">
+          <p class="label">Austin</p>
+          <img src="images/austin.png" />
+        </div>
+        <div class="image-card">
+          <p class="label">Seattle</p>
+          <img src="images/seattle.png" />
+        </div>
+      </div>
+    </div>
+    <div class="mapContainer">
+      <div class="citySelection">
+        <text>Select City: </text>
+        <select id="cityDropdown"></select>
+      </div>
+    </div>
+    <script>
+      // enter code to define margin and dimensions for svg
+      let margin = { top: 40, right: 40, bottom: 40, left: 40 };
+      let width = 1000 - margin.left - margin.right;
+      let height = 800 - margin.top - margin.bottom;
+
+      // enter code to create svg
+      let svg = d3
+        .select(".mapContainer")
+        .append("svg")
+        .attr("id", "zoning_map")
+        .attr("width", width)
+        .attr("height", height)
+        .attr("display", "block");
+
+      // define projection and path
+      let projection = d3
+        .geoNaturalEarth()
+        .fitSize([width, height], { type: "Sphere" })
+        .center([-84.28770878062926, 33.88839417502403]) // Center on Atlanta, Georgia
+        .scale(40000); // Zoom in on Atlanta
+
+      let path = d3.geoPath().projection(projection);
+
+      // Fetch all the different parcels for each of the different types of city
+      let fetchAtlantaParcels = d3.json("data/atlanta.geojson");
+      let fetchSeattleParcels = d3.json("data/seattle_atlanta.geojson");
+      let fetchSanJoseParcels = d3.json("data/sj_atlanta.geojson");
+      let fetchAustinParcels = d3.json("data/austin_atlanta.geojson");
+      let fetchCounties = d3.json("data/georgia-counties.json");
+
+      Promise.all([
+        fetchCounties,
+        fetchAtlantaParcels,
+        fetchSeattleParcels,
+        fetchSanJoseParcels,
+        fetchAustinParcels,
+      ]).then(function (values) {
+        let cityParcelMap = {
+          Atlanta: values[1],
+          Seattle: values[2],
+          Austin: values[4],
+          "San Jose": values[3],
+        };
+        ready(null, values[0], cityParcelMap);
+      });
+
+      function ready(error, counties, cityParcelMap) {
+        counties_collection = topojson.feature(
+          counties,
+          counties.objects["georgia-counties"]
+        );
+
+        let dropdown = d3.select("#cityDropdown");
+        dropdown
+          .selectAll("option")
+          .data(Object.keys(cityParcelMap))
+          .enter()
+          .append("option")
+          .text(function (d) {
+            return d;
+          })
+          .attr("value", function (d) {
+            return d;
+          });
+
+        dropdown.on("change", function (d) {
+          let city = d3.select(this).property("value");
+          createMapAndLegend(counties_collection, cityParcelMap, city);
+        });
+
+        // create default map
+        createMapAndLegend(counties_collection, cityParcelMap, "Atlanta");
+      }
+      function createMapAndLegend(counties, cityParcelMap, selectedCity) {
+        let parcelsData = cityParcelMap[selectedCity];
+
+        svg.selectAll("*").remove();
+
+        let counties_elem = svg.append("g").attr("id", "counties");
+        let parcels = svg.append("g").attr("id", "parcels");
+
+        let catColor = d3
+          .scaleOrdinal()
+          .range(d3.schemeCategory10)
+          .domain([
+            "Single Family Residential",
+            "Multiple Family Residential",
+            "Mixed Use",
+            "Commercial",
+            "Unknown",
+          ]);
+
+        counties_elem
+          .selectAll("path")
+          .data(counties.features)
+          .enter()
+          .append("path")
+          .attr("d", function (d) {
+            return path(d);
+          })
+          .attr("stroke", "black")
+          .attr("fill", "white");
+
+        parcels
+          .selectAll("path")
+          .data(parcelsData.features)
+          .enter()
+          .append("path")
+          .attr("d", function (d) {
+            return path(d);
+          })
+          .attr("fill", function (d) {
+            return catColor(d.properties.zoning_description);
+          });
+
+        let legend = svg
+          .append("g")
+          .attr("transform", `translate(${width - 60}, 30)`)
+          .attr("font-size", "10px")
+          .attr("text-anchor", "end")
+          .selectAll("g")
+          .data(catColor.domain())
+          .enter()
+          .append("g")
+          .attr("transform", function (d, i) {
+            return "translate(0," + i * 20 + ")";
+          });
+
+        legend
+          .append("rect")
+          .attr("width", 18)
+          .attr("height", 18)
+          .attr("fill", catColor);
+
+        legend
+          .append("text")
+          .attr("x", -10)
+          .attr("y", 9)
+          .attr("dy", ".35em")
+          .text(function (d) {
+            return d;
+          });
+      }
+    </script>
+  </body>
+</html>
